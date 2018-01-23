@@ -6,6 +6,6 @@ root = true
 end_of_line = lf
 insert_final_newline = true
 
-[*.go]
+[*.{go,md}]
 indent_style = tab
 indent_size = 2
