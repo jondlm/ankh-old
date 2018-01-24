@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
 
 	"gopkg.in/yaml.v2"
@@ -16,7 +17,7 @@ type CliContext struct {
 	KubeContext string `yaml:"kube_context"`
 	Environment string
 	Profile     string
-	HelmRepoURL string
+	HelmRepoURL string `yaml:"helm_repo_url"`
 	Context     map[interface{}]interface{}
 }
 
@@ -25,6 +26,12 @@ type CliContext struct {
 type CliConfig struct {
 	CurrentContext string `yaml:"current_context"`
 	Contexts       []CliContext
+}
+
+type Chart struct {
+	Name    string
+	Version string
+	Values  map[string]interface{}
 }
 
 // Config defines the shape of the `ankh.yaml` file which is used to define
@@ -44,11 +51,7 @@ type Config struct {
 	Namespace string
 
 	Deploy struct {
-		Charts []struct {
-			Name    string
-			Version string
-			Values  map[string]interface{}
-		}
+		Charts []Chart
 	}
 }
 
@@ -56,7 +59,7 @@ func GetConfig(filename *string) (Config, error) {
 	config := Config{}
 	deployFile, err := ioutil.ReadFile(fmt.Sprintf("%s", *filename))
 	if err != nil {
-		return config, fmt.Errorf("unable to read %s file: %v", *filename, err)
+		return config, err
 	}
 
 	err = yaml.UnmarshalStrict(deployFile, &config)
@@ -77,9 +80,13 @@ func GetConfig(filename *string) (Config, error) {
 		}
 
 		for _, c := range config.ChildrenPaths {
+			if path.IsAbs(c) == false {
+				c = path.Join(filepath.Dir(config.Path), c)
+			}
+
 			newChild, err := GetConfig(&c)
 			if err != nil {
-				return config, fmt.Errorf("unable to process child %s: %v", c, err)
+				return config, fmt.Errorf("unable to process child: %v", err)
 			}
 
 			config.Children = append(config.Children, newChild)
@@ -112,6 +119,10 @@ func GetCliCurrentContext() (CliContext, error) {
 
 	if context.Name == "" {
 		return context, fmt.Errorf("unable to locate a currentContext `%s`", cliConfig.CurrentContext)
+	}
+
+	if context.HelmRepoURL == "" {
+		return context, fmt.Errorf("missing helm_repo_url from the `%s` context in ~/.ankhrc", cliConfig.CurrentContext)
 	}
 
 	return context, nil

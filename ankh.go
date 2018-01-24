@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
 	//"github.com/davecgh/go-spew/spew"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/jondlm/ankh/internal/ankh"
 	"github.com/jondlm/ankh/internal/helm"
+	"github.com/jondlm/ankh/internal/kubectl"
 )
 
 var log = logrus.New()
@@ -33,15 +35,51 @@ func main() {
 		)
 
 		cmd.Action = func() {
+			// TODO: finish this up
+			log.Fatal("Not yet implemented")
+
 			currentContext, err := ankh.GetCliCurrentContext()
 			check(err)
 
 			config, err := ankh.GetConfig(filename)
 			check(err)
 
-			err = helm.Execute(helm.Delete, config, currentContext, log)
+			helmOutput, err := helm.Template(config, currentContext)
 			check(err)
 
+			action := kubectl.Apply
+			log.Info("starting kubectl")
+			kubectlOutput, err := kubectl.Execute(action, helmOutput, config, currentContext)
+			check(err)
+
+			fmt.Println(kubectlOutput)
+
+			log.Info(helmOutput)
+			log.Info("complete")
+			os.Exit(0)
+		}
+	})
+
+	app.Command("template", "Output the results of templating an ankh file", func(cmd *cli.Cmd) {
+
+		cmd.Spec = "[-f]"
+
+		var (
+			filename = cmd.StringOpt("f filename", "ankh.yaml", "Config file name")
+		)
+
+		cmd.Action = func() {
+			currentContext, err := ankh.GetCliCurrentContext()
+			check(err)
+
+			config, err := ankh.GetConfig(filename)
+			check(err)
+
+			log.Info("starting helm template")
+			helmOutput, err := helm.Template(config, currentContext)
+			check(err)
+
+			fmt.Println(helmOutput)
 			log.Info("complete")
 			os.Exit(0)
 		}
