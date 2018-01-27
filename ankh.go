@@ -38,18 +38,18 @@ func main() {
 			// TODO: finish this up
 			log.Fatal("Not yet implemented")
 
-			currentContext, err := ankh.GetCliCurrentContext()
+			ankhConfig, err := ankh.GetAnkhConfig()
 			check(err)
 
-			config, err := ankh.GetConfig(filename)
+			config, err := ankh.ProcessAnkhFile(filename)
 			check(err)
 
-			helmOutput, err := helm.Template(config, currentContext)
+			helmOutput, err := helm.Template(log, config, ankhConfig)
 			check(err)
 
 			action := kubectl.Apply
 			log.Info("starting kubectl")
-			kubectlOutput, err := kubectl.Execute(action, helmOutput, config, currentContext)
+			kubectlOutput, err := kubectl.Execute(action, helmOutput, config, ankhConfig)
 			check(err)
 
 			fmt.Println(kubectlOutput)
@@ -69,14 +69,14 @@ func main() {
 		)
 
 		cmd.Action = func() {
-			currentContext, err := ankh.GetCliCurrentContext()
+			ankhConfig, err := ankh.GetAnkhConfig()
 			check(err)
 
-			config, err := ankh.GetConfig(filename)
+			config, err := ankh.ProcessAnkhFile(filename)
 			check(err)
 
 			log.Info("starting helm template")
-			helmOutput, err := helm.Template(config, currentContext)
+			helmOutput, err := helm.Template(log, config, ankhConfig)
 			check(err)
 
 			fmt.Println(helmOutput)

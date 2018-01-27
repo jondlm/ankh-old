@@ -15,9 +15,9 @@ const (
 	Delete action = "delete"
 )
 
-func Execute(act action, input string, conf ankh.Config, ctx ankh.CliContext) (string, error) {
-
-	kubectlArgs := []string{"kubectl", string(act), "--context", ctx.KubeContext, "--namespace", conf.Namespace, "-f", "-"}
+func Execute(act action, input string, ankhFile ankh.AnkhFile, ankhConfig ankh.AnkhConfig) (string, error) {
+	ctx := ankhConfig.CurrentContext
+	kubectlArgs := []string{"kubectl", string(act), "--context", ctx.KubeContext, "--namespace", ankhFile.Namespace, "-f", "-"}
 
 	kubectlCmd := exec.Command(kubectlArgs[0], kubectlArgs[1:]...)
 
