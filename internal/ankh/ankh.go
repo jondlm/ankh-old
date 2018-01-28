@@ -97,7 +97,34 @@ func (ankhConfig *AnkhConfig) ValidateAndInit() []error {
 type Chart struct {
 	Name    string
 	Version string
-	Values  map[string]interface{}
+	// DefaultValues are values that apply regardless of environment
+	DefaultValues map[string]interface{} `yaml:"default_values"`
+	// Values is a map with keys that line up with `supported_environments`
+	Values map[string]interface{}
+	// ResourceProfiles is a map with keys that line up with `supported_resource_profiles`
+	ResourceProfiles map[string]interface{} `yaml:"resource_profiles"`
+}
+
+// Validate ensures that a chart is valid and requires a filled out AnkhConfig
+// to do so
+func (c *Chart) Validate(ankhConfig AnkhConfig) error {
+	if c.Values != nil {
+		for k := range c.Values {
+			if !util.Contains(ankhConfig.SupportedEnvironments, k) {
+				return fmt.Errorf("unsupported environment '%s' found in ankh file `values` for chart '%s'", k, c.Name)
+			}
+		}
+	}
+
+	if c.ResourceProfiles != nil {
+		for k := range c.ResourceProfiles {
+			if !util.Contains(ankhConfig.SupportedResourceProfiles, k) {
+				return fmt.Errorf("unsupported resource profile '%s' found in ankh file `resource_profiles` for chart '%s'", k, c.Name)
+			}
+		}
+	}
+
+	return nil
 }
 
 // AnkhFile defines the shape of the `ankh.yaml` file which is used to define

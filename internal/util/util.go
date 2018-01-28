@@ -90,7 +90,9 @@ func Untar(dst string, r io.Reader) error {
 		switch header.Typeflag {
 
 		// TODO: find out why header.Typeflag is a uint8 and tar.TypeDir is an
-		// int32?
+		// int32? For some reason the tarballs coming out of helm don't have
+		// directories as separate entries, so all the directories get created by
+		// the `case 0` code
 		case tar.TypeDir:
 			spew.Dump("TypeDir")
 			if _, err := os.Stat(target); err != nil {
