@@ -14,7 +14,6 @@ import (
 	"github.com/jondlm/ankh/internal/util"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v2"
-	//"github.com/davecgh/go-spew/spew"
 )
 
 func templateChart(log *logrus.Logger, chart ankh.Chart, ankhFile ankh.AnkhFile, ankhConfig ankh.AnkhConfig) (string, error) {
@@ -24,12 +23,12 @@ func templateChart(log *logrus.Logger, chart ankh.Chart, ankhFile ankh.AnkhFile,
 	dirPath := filepath.Join(filepath.Dir(ankhFile.Path), "charts", chart.Name)
 	_, dirErr := os.Stat(dirPath)
 
-	// Setup a temporary director where we'll either copy the chart files, if
-	// we've got a directory, or we'll download and extract a tarball to the temp
-	// dir. Then we'll mutate some of the ankh specific files based on the
-	// current environment and resource profile. Then we'll use those files as
-	// arguments to the helm command.
-	tmpDir, err := ioutil.TempDir(os.TempDir(), chart.Name)
+	// Setup a directory where we'll either copy the chart files, if we've got a
+	// directory, or we'll download and extract a tarball to the temp dir. Then
+	// we'll mutate some of the ankh specific files based on the current
+	// environment and resource profile. Then we'll use those files as arguments
+	// to the helm command.
+	tmpDir, err := ioutil.TempDir(ankh.AnkhDataDir, chart.Name+"-")
 	if err != nil {
 		return "", err
 	}
@@ -79,7 +78,7 @@ func templateChart(log *logrus.Logger, chart ankh.Chart, ankhFile ankh.AnkhFile,
 	// Check if Global is not empty
 	if ctx.Global != nil {
 		for _, item := range util.Collapse(ctx.Global, nil, nil) {
-			helmArgs = append(helmArgs, "--set", "context."+item)
+			helmArgs = append(helmArgs, "--set", "global."+item)
 		}
 	}
 
@@ -209,11 +208,38 @@ func mutateYAMLFile(filename, key string, supportedKeys []string) error {
 }
 
 func Template(log *logrus.Logger, ankhFile ankh.AnkhFile, ankhConfig ankh.AnkhConfig) (string, error) {
+	adminDepOutputCombined := ""
+	depOutputCombined := ""
 	chartOutputCombined := ""
 
+	log.Debugf("beginning templating of %s", ankhFile.Path)
+
+	if ankhFile.AdminDependenciesResolved != nil && ankhConfig.CurrentContext.ClusterAdmin == true {
+		log.Debugf("templating admin deps")
+		for _, adminDepConfig := range ankhFile.AdminDependenciesResolved {
+			adminDepOutput, err := Template(log, adminDepConfig, ankhConfig)
+			if err != nil {
+				return adminDepOutputCombined, err
+			}
+			adminDepOutputCombined += adminDepOutput
+		}
+	}
+
+	if ankhFile.DependenciesResovled != nil {
+		log.Debugf("templating deps")
+		for _, dependencyConfig := range ankhFile.DependenciesResovled {
+			depOutput, err := Template(log, dependencyConfig, ankhConfig)
+			if err != nil {
+				return depOutputCombined, err
+			}
+			depOutputCombined += depOutput
+		}
+	}
+
 	if len(ankhFile.Charts) > 0 {
+		log.Debugf("templating charts")
 		for _, chart := range ankhFile.Charts {
-			log.Debugf("templating %s", chart.Name)
+			log.Debugf("templating chart '%s'", chart.Name)
 
 			if err := chart.Validate(ankhConfig); err != nil {
 				return chartOutputCombined, err
@@ -227,18 +253,5 @@ func Template(log *logrus.Logger, ankhFile ankh.AnkhFile, ankhConfig ankh.AnkhCo
 		}
 	}
 
-	if ankhFile.DependenciesResovled == nil {
-		return chartOutputCombined, nil
-	}
-
-	childOutputCombined := ""
-	for _, childConfig := range ankhFile.DependenciesResovled {
-		childOutput, err := Template(log, childConfig, ankhConfig)
-		if err != nil {
-			return childOutputCombined, err
-		}
-		childOutputCombined += childOutput
-	}
-
-	return chartOutputCombined + childOutputCombined, nil
+	return adminDepOutputCombined + depOutputCombined + chartOutputCombined, nil
 }

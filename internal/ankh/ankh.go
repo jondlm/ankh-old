@@ -6,10 +6,15 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"time"
 
 	"github.com/jondlm/ankh/internal/util"
 	"gopkg.in/yaml.v2"
 )
+
+var ConfigDir = filepath.Join(os.Getenv("HOME"), ".ankh")
+var AnkhConfigPath = filepath.Join(ConfigDir, "config")
+var AnkhDataDir = filepath.Join(ConfigDir, "data", fmt.Sprintf("%v", time.Now().Unix()))
 
 // Context is a struct that represents a context for applying files to a
 // Kubernetes cluster
@@ -133,6 +138,18 @@ type AnkhFile struct {
 	// (private) an absolute path to the ankh.yaml file
 	Path string
 
+	Bootstrap struct {
+		Scripts []struct {
+			Path string
+		}
+	}
+
+	Teardown struct {
+		Scripts []struct {
+			Path string
+		}
+	}
+
 	// Array of paths to other ankh.yaml files that should only be run for
 	// cluster admins. This is tied to the Context.ClusterAdmin bool
 	AdminDependencies []string `yaml:"admin_dependencies"`
@@ -171,7 +188,28 @@ func ProcessAnkhFile(filename *string) (AnkhFile, error) {
 		return config, err
 	}
 
-	// Recursively process children
+	// Recursively process admin dependencies
+	if config.AdminDependencies != nil {
+		if config.AdminDependenciesResolved == nil {
+			config.AdminDependenciesResolved = []AnkhFile{}
+		}
+
+		for _, c := range config.AdminDependencies {
+			if path.IsAbs(c) == false {
+				c = path.Join(filepath.Dir(config.Path), c)
+			}
+
+			newAdminDependencyResolved, err := ProcessAnkhFile(&c)
+			if err != nil {
+				return config, fmt.Errorf("unable to process admin dependency: %v", err)
+			}
+
+			config.AdminDependenciesResolved = append(config.AdminDependenciesResolved, newAdminDependencyResolved)
+		}
+
+	}
+
+	// Recursively process dependencies
 	if config.Dependencies != nil {
 		if config.DependenciesResovled == nil {
 			config.DependenciesResovled = []AnkhFile{}
@@ -197,14 +235,18 @@ func ProcessAnkhFile(filename *string) (AnkhFile, error) {
 func GetAnkhConfig() (AnkhConfig, error) {
 	ankhConfig := AnkhConfig{}
 
-	ankhRcFile, err := ioutil.ReadFile(fmt.Sprintf("%s/.ankh/config", os.Getenv("HOME")))
+	ankhRcFile, err := ioutil.ReadFile(AnkhConfigPath)
 	if err != nil {
-		return ankhConfig, fmt.Errorf("unable to read ~/.ankh/config file: %v", err)
+		return ankhConfig, fmt.Errorf("unable to read %s file: %v", AnkhConfigPath, err)
+	}
+
+	if err := os.MkdirAll(AnkhDataDir, 0755); err != nil {
+		return ankhConfig, fmt.Errorf("unable to make data dir '%s': %v", AnkhDataDir, err)
 	}
 
 	err = yaml.UnmarshalStrict(ankhRcFile, &ankhConfig)
 	if err != nil {
-		return ankhConfig, fmt.Errorf("unable to process ~/.ankh/config file: %v", err)
+		return ankhConfig, fmt.Errorf("unable to process %s file: %v", AnkhConfigPath, err)
 	}
 
 	errs := ankhConfig.ValidateAndInit()
