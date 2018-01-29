@@ -23,9 +23,9 @@ type Context struct {
 	KubeContext     string `yaml:"kube_context"`
 	Environment     string
 	ResourceProfile string `yaml:"resource_profile"`
-	HelmRepoURL     string `yaml:"helm_repo_url"`
+	HelmRegistryURL string `yaml:"helm_registry_url"`
 	ClusterAdmin    bool   `yaml:"cluster_admin"`
-	Global          map[interface{}]interface{}
+	Global          map[string]interface{}
 }
 
 // AnkhConfig defines the shape of the ~/.ankh/config file used for global
@@ -35,13 +35,13 @@ type AnkhConfig struct {
 	CurrentContext            Context  // (private) filled in by code
 	SupportedEnvironments     []string `yaml:"supported_environments"`
 	SupportedResourceProfiles []string `yaml:"supported_resource_profiles"`
-	Contexts                  []Context
+	Contexts                  map[string]Context
 }
 
 // ValidateAndInit ensures the AnkhConfig is internally sane and populates
 // special fields if necessary.
 func (ankhConfig *AnkhConfig) ValidateAndInit() []error {
-	selectedContext := Context{}
+	//selectedContext := Context{}
 	errors := []error{}
 
 	// Rudimentary validation here, could probably benefit from a proper
@@ -59,42 +59,37 @@ func (ankhConfig *AnkhConfig) ValidateAndInit() []error {
 		errors = append(errors, fmt.Errorf("missing or empty `supported_resource_profiles`"))
 	}
 
-	for _, c := range ankhConfig.Contexts {
-		if c.Name == ankhConfig.CurrentContextName {
-			selectedContext = c
-			break
+	selectedContext, contextExists := ankhConfig.Contexts[ankhConfig.CurrentContextName]
+
+	if contextExists == false {
+		errors = append(errors, fmt.Errorf("context '%s' not found in `contexts`", ankhConfig.CurrentContextName))
+	} else {
+		if util.Contains(ankhConfig.SupportedEnvironments, selectedContext.Environment) == false {
+			errors = append(errors, fmt.Errorf("environment '%s' not found in `supported_environments`", selectedContext.Environment))
 		}
-	}
 
-	if util.Contains(ankhConfig.SupportedEnvironments, selectedContext.Environment) == false {
-		errors = append(errors, fmt.Errorf("environment '%s' not found in `supported_environments`", selectedContext.Environment))
-	}
+		if util.Contains(ankhConfig.SupportedResourceProfiles, selectedContext.ResourceProfile) == false {
+			errors = append(errors, fmt.Errorf("resource profile '%s' not found in `supported_resource_profiles`", selectedContext.ResourceProfile))
+		}
 
-	if util.Contains(ankhConfig.SupportedResourceProfiles, selectedContext.ResourceProfile) == false {
-		errors = append(errors, fmt.Errorf("resource profile '%s' not found in `supported_resource_profiles`", selectedContext.ResourceProfile))
-	}
+		if selectedContext.HelmRegistryURL == "" {
+			errors = append(errors, fmt.Errorf("missing or empty `helm_registry_url`"))
+		}
 
-	if selectedContext.Name == "" {
-		errors = append(errors, fmt.Errorf("unable to locate the '%s' context in your ankh config", ankhConfig.CurrentContextName))
-	}
+		if selectedContext.KubeContext == "" {
+			errors = append(errors, fmt.Errorf("missing or empty `kube_context`"))
+		}
 
-	if selectedContext.HelmRepoURL == "" {
-		errors = append(errors, fmt.Errorf("missing or empty `helm_repo_url`"))
-	}
+		if selectedContext.Environment == "" {
+			errors = append(errors, fmt.Errorf("missing or empty `environment`"))
+		}
 
-	if selectedContext.KubeContext == "" {
-		errors = append(errors, fmt.Errorf("missing or empty `kube_context`"))
-	}
+		if selectedContext.ResourceProfile == "" {
+			errors = append(errors, fmt.Errorf("missing or empty `resource_profile`"))
+		}
 
-	if selectedContext.Environment == "" {
-		errors = append(errors, fmt.Errorf("missing or empty `environment`"))
+		ankhConfig.CurrentContext = selectedContext
 	}
-
-	if selectedContext.ResourceProfile == "" {
-		errors = append(errors, fmt.Errorf("missing or empty `resource_profile`"))
-	}
-
-	ankhConfig.CurrentContext = selectedContext
 
 	return errors
 }
@@ -196,7 +191,7 @@ func ProcessAnkhFile(filename *string) (AnkhFile, error) {
 
 		for _, c := range config.AdminDependencies {
 			if path.IsAbs(c) == false {
-				c = path.Join(filepath.Dir(config.Path), c)
+				c = path.Join(filepath.Dir(config.Path), c, "ankh.yaml")
 			}
 
 			newAdminDependencyResolved, err := ProcessAnkhFile(&c)
@@ -217,7 +212,7 @@ func ProcessAnkhFile(filename *string) (AnkhFile, error) {
 
 		for _, c := range config.Dependencies {
 			if path.IsAbs(c) == false {
-				c = path.Join(filepath.Dir(config.Path), c)
+				c = path.Join(filepath.Dir(config.Path), c, "ankh.yaml")
 			}
 
 			newDependencyResolved, err := ProcessAnkhFile(&c)

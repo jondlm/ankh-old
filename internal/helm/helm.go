@@ -75,7 +75,7 @@ func templateChart(log *logrus.Logger, chart ankh.Chart, ankhFile ankh.AnkhFile,
 		helmArgs = append(helmArgs, "-f", resourceProfilesPath)
 	}
 
-	// Check if Global is not empty
+	// Check if Global contains anything
 	if ctx.Global != nil {
 		for _, item := range util.Collapse(ctx.Global, nil, nil) {
 			helmArgs = append(helmArgs, "--set", "global."+item)
@@ -84,7 +84,7 @@ func templateChart(log *logrus.Logger, chart ankh.Chart, ankhFile ankh.AnkhFile,
 
 	tarballFileName := fmt.Sprintf("%s-%s.tgz", chart.Name, chart.Version)
 	tarballPath := filepath.Join(filepath.Dir(ankhFile.Path), "charts", tarballFileName)
-	tarballURL := fmt.Sprintf("%s/%s", strings.TrimRight(ctx.HelmRepoURL, "/"), tarballFileName)
+	tarballURL := fmt.Sprintf("%s/%s", strings.TrimRight(ctx.HelmRegistryURL, "/"), tarballFileName)
 
 	// if we already have a dir, let's just copy it to a temp directory so we can
 	// make changes to the ankh specific yaml files before passing them as `-f`
@@ -94,6 +94,12 @@ func templateChart(log *logrus.Logger, chart ankh.Chart, ankhFile ankh.AnkhFile,
 			return "", err
 		}
 	} else {
+		log.Debugf("ensuring chart directory is made at %s", filepath.Dir(tarballPath))
+		if err := os.MkdirAll(filepath.Dir(tarballPath), 0755); err != nil {
+			return "", err
+		}
+
+		log.Debugf("opening system file at %s", tarballPath)
 		f, err := os.Create(tarballPath)
 		if err != nil {
 			return "", err
@@ -101,6 +107,7 @@ func templateChart(log *logrus.Logger, chart ankh.Chart, ankhFile ankh.AnkhFile,
 		defer f.Close()
 
 		// TODO: this code should be modified to properly fetch charts
+		log.Debugf("downloading chart from %s", tarballURL)
 		tr := &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		}
@@ -114,6 +121,7 @@ func templateChart(log *logrus.Logger, chart ankh.Chart, ankhFile ankh.AnkhFile,
 		}
 		// defer resp.Body.Close()
 
+		log.Debugf("untarring chart to %s", tmpDir)
 		if err = util.Untar(tmpDir, resp.Body); err != nil {
 			return "", err
 		}
@@ -132,7 +140,7 @@ func templateChart(log *logrus.Logger, chart ankh.Chart, ankhFile ankh.AnkhFile,
 
 	_, valuesErr := os.Stat(valuesPath)
 	if valuesErr == nil {
-		if err := mutateYAMLFile(valuesPath, ctx.Environment, ankhConfig.SupportedEnvironments); err != nil {
+		if err := createReducedYAMLFile(valuesPath, ctx.Environment, ankhConfig.SupportedEnvironments); err != nil {
 			return "", fmt.Errorf("unable to process ankh-values.yaml file for chart '%s': %v", chart.Name, err)
 		}
 		helmArgs = append(helmArgs, "-f", valuesPath)
@@ -140,13 +148,15 @@ func templateChart(log *logrus.Logger, chart ankh.Chart, ankhFile ankh.AnkhFile,
 
 	_, resourceProfilesError := os.Stat(resourceProfilesPath)
 	if resourceProfilesError == nil {
-		if err := mutateYAMLFile(resourceProfilesPath, ctx.ResourceProfile, ankhConfig.SupportedResourceProfiles); err != nil {
+		if err := createReducedYAMLFile(resourceProfilesPath, ctx.ResourceProfile, ankhConfig.SupportedResourceProfiles); err != nil {
 			return "", fmt.Errorf("unable to process ankh-resource-profiles.yaml file for chart '%s': %v", chart.Name, err)
 		}
 		helmArgs = append(helmArgs, "-f", resourceProfilesPath)
 	}
 
 	helmArgs = append(helmArgs, chartPath)
+
+	log.Debugf("running helm command %s", strings.Join(helmArgs, " "))
 
 	helmCmd := exec.Command(helmArgs[0], helmArgs[1:]...)
 	helmOutput, err := helmCmd.CombinedOutput()
@@ -158,7 +168,7 @@ func templateChart(log *logrus.Logger, chart ankh.Chart, ankhFile ankh.AnkhFile,
 	return string(helmOutput), nil
 }
 
-func mutateYAMLFile(filename, key string, supportedKeys []string) error {
+func createReducedYAMLFile(filename, key string, supportedKeys []string) error {
 	in := make(map[string]interface{})
 
 	inBytes, err := ioutil.ReadFile(filename)

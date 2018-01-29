@@ -10,8 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-
-	"github.com/davecgh/go-spew/spew"
+	//"github.com/davecgh/go-spew/spew"
 )
 
 // Collapse recursively traverses a map and tries to collapse it to a flat
@@ -25,12 +24,10 @@ func Collapse(x interface{}, path []string, acc []string) []string {
 	}
 
 	switch x := x.(type) {
-	case map[interface{}]interface{}:
+	case map[string]interface{}:
 		var arr []string
 		for key, value := range x {
-			// TODO: using `.(string)` here could cause a panic in cases where the
-			// key isn't a string, which is pretty uncommon
-			newPath := append(path, key.(string))
+			newPath := append(path, key)
 			arr = append(arr, Collapse(value, newPath, acc)...)
 		}
 		return arr
@@ -94,7 +91,6 @@ func Untar(dst string, r io.Reader) error {
 		// directories as separate entries, so all the directories get created by
 		// the `case 0` code
 		case tar.TypeDir:
-			spew.Dump("TypeDir")
 			if _, err := os.Stat(target); err != nil {
 				if err := os.MkdirAll(target, 0755); err != nil {
 					return err

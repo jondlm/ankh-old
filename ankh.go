@@ -17,7 +17,7 @@ var log = logrus.New()
 
 func main() {
 	formatter := logrus.TextFormatter{
-		FullTimestamp: true,
+		DisableTimestamp: true,
 	}
 	log.Out = os.Stdout
 	log.Level = logrus.DebugLevel
@@ -35,9 +35,6 @@ func main() {
 		)
 
 		cmd.Action = func() {
-			// TODO: finish this up
-			log.Fatal("Not yet implemented")
-
 			ankhConfig, err := ankh.GetAnkhConfig()
 			check(err)
 
